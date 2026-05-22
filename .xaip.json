@@ -1,0 +1,4440 @@
+{
+  "project": "xaip-demo",
+  "version": "1",
+  "activeEnv": "local",
+  "environments": {
+    "local": {
+      "name": "local",
+      "baseUrl": "http://localhost:8000",
+      "auth": {
+        "type": "bearer",
+        "token": "test-token-static-12345"
+      },
+      "vars": {
+        "admin_user": "admin",
+        "admin_pass": "secret",
+        "api_key": "testkey-12345"
+      }
+    },
+    "local-basic": {
+      "name": "local-basic",
+      "baseUrl": "http://localhost:8000",
+      "auth": {
+        "type": "basic",
+        "user": "admin",
+        "password": "secret"
+      },
+      "vars": {}
+    },
+    "local-apikey": {
+      "name": "local-apikey",
+      "baseUrl": "http://localhost:8000",
+      "auth": {
+        "type": "apikey",
+        "location": "header",
+        "name": "X-Api-Key",
+        "value": "testkey-12345"
+      },
+      "vars": {}
+    }
+  },
+  "endpoints": [],
+  "collections": [
+    {
+      "id": "smoke",
+      "name": "01 — Smoke Tests",
+      "steps": [
+        {
+          "id": "health",
+          "name": "Health check (sin auth)",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/health",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.status=ok",
+            "ms<=2000"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "echo-get",
+          "name": "Echo GET — refleja headers",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/echo",
+            "headers": {
+              "X-Test-Header": "xaip-smoke"
+            },
+            "params": {
+              "q": "hello"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.method=GET"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "echo-post",
+          "name": "Echo POST — refleja body",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "POST",
+            "path": "/echo",
+            "headers": {},
+            "params": {},
+            "body": {
+              "message": "hello xaip",
+              "number": 42
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.body.message=hello xaip"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    },
+    {
+      "id": "auth-flow",
+      "name": "02 — Auth Flow (token dinámico)",
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "POST",
+            "path": "/auth/token",
+            "headers": {},
+            "params": {},
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.token_type=bearer",
+            "body.access_token exists"
+          ],
+          "save": {
+            "token": "body.access_token"
+          },
+          "asAuth": true
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "dependsOn": [
+            "get-token"
+          ],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/protected/bearer",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.authenticated=true",
+            "body.method=bearer"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/protected/apikey",
+            "headers": {
+              "X-Api-Key": "testkey-12345"
+            },
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.authenticated=true"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/protected/basic",
+            "headers": {
+              "Authorization": "Basic YWRtaW46c2VjcmV0"
+            },
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.authenticated=true",
+            "body.method=basic"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/protected/bearer",
+            "headers": {
+              "Authorization": "Bearer bad-token"
+            },
+            "params": {}
+          },
+          "expect": [
+            "status=401"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    },
+    {
+      "id": "crud-users",
+      "name": "03 — CRUD Usuarios (variables encadenadas)",
+      "steps": [
+        {
+          "id": "list-users",
+          "name": "GET /users — listar usuarios",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users",
+            "headers": {},
+            "params": {
+              "page": "1",
+              "limit": "10"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.total>=3",
+            "body.data exists"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "create-user",
+          "name": "POST /users — crear usuario nuevo",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "POST",
+            "path": "/users",
+            "headers": {},
+            "params": {},
+            "body": {
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user"
+            }
+          },
+          "expect": [
+            "status=201",
+            "body.id exists",
+            "body.name=Test User"
+          ],
+          "save": {
+            "new_user_id": "body.id",
+            "new_user_email": "body.email"
+          },
+          "asAuth": false
+        },
+        {
+          "id": "get-created-user",
+          "name": "GET /users/{id} — leer usuario creado",
+          "dependsOn": [
+            "create-user"
+          ],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users/{{session.new_user_id}}",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.email=testuser@example.com"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "patch-user",
+          "name": "PATCH /users/{id} — actualizar parcialmente",
+          "dependsOn": [
+            "create-user"
+          ],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "PATCH",
+            "path": "/users/{{session.new_user_id}}",
+            "headers": {},
+            "params": {},
+            "body": {
+              "name": "Test User Updated"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.name=Test User Updated"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "create-post",
+          "name": "POST /users/{id}/posts — crear post",
+          "dependsOn": [
+            "create-user"
+          ],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "POST",
+            "path": "/users/{{session.new_user_id}}/posts",
+            "headers": {},
+            "params": {},
+            "body": {
+              "title": "Post de prueba",
+              "body": "Contenido del post",
+              "published": true
+            }
+          },
+          "expect": [
+            "status=201",
+            "body.id exists"
+          ],
+          "save": {
+            "new_post_id": "body.id"
+          },
+          "asAuth": false
+        },
+        {
+          "id": "get-user-posts",
+          "name": "GET /users/{id}/posts — posts del usuario",
+          "dependsOn": [
+            "create-post"
+          ],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users/{{session.new_user_id}}/posts",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "delete-post",
+          "name": "DELETE /posts/{id} — teardown: borrar post",
+          "dependsOn": [
+            "create-post"
+          ],
+          "parallel": false,
+          "always": true,
+          "retry": 0,
+          "request": {
+            "method": "DELETE",
+            "path": "/posts/{{session.new_post_id}}",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=204"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "delete-user",
+          "name": "DELETE /users/{id} — teardown: borrar usuario",
+          "dependsOn": [
+            "create-user",
+            "get-created-user",
+            "patch-user",
+            "get-user-posts"
+          ],
+          "parallel": false,
+          "always": true,
+          "retry": 0,
+          "request": {
+            "method": "DELETE",
+            "path": "/users/{{session.new_user_id}}",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=204"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    },
+    {
+      "id": "assertions-demo",
+      "name": "04 — Assertions avanzadas",
+      "steps": [
+        {
+          "id": "assert-status-range",
+          "name": "Status en rango 2xx",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/health",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status>=200",
+            "status<300"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "assert-headers",
+          "name": "Headers de respuesta presentes",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/health",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "headers.x-request-id exists",
+            "headers.x-response-time-ms exists"
+          ],
+          "save": {
+            "request_id": "headers.x-request-id"
+          },
+          "asAuth": false
+        },
+        {
+          "id": "assert-body-deep",
+          "name": "Campos del body con operadores",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "body.total>=1",
+            "body.page=1",
+            "body.data exists"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "assert-ms",
+          "name": "Tiempo de respuesta < 1000ms",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/health",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=200",
+            "ms<=1000"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "assert-slow",
+          "name": "Endpoint lento — verifica tiempo",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/slow",
+            "headers": {},
+            "params": {
+              "ms": "200"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.slept_ms=200",
+            "ms>=200"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    },
+    {
+      "id": "error-scenarios",
+      "name": "05 — Manejo de errores",
+      "steps": [
+        {
+          "id": "not-found",
+          "name": "GET /users/9999 — 404 esperado",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users/9999",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=404"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "force-500",
+          "name": "GET /error/500 — 500 esperado",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/error/500",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=500",
+            "body.code=500"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "force-422",
+          "name": "GET /error/422 — 422 esperado",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/error/422",
+            "headers": {},
+            "params": {}
+          },
+          "expect": [
+            "status=422"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "unauth-access",
+          "name": "Sin auth — 401 esperado",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users",
+            "headers": {
+              "Authorization": "Bearer invalid-token-xyz"
+            },
+            "params": {}
+          },
+          "expect": [
+            "status=401"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    },
+    {
+      "id": "pagination-demo",
+      "name": "06 — Paginación y filtros",
+      "steps": [
+        {
+          "id": "page-1",
+          "name": "Primera página",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/paginate",
+            "headers": {},
+            "params": {
+              "page": "1",
+              "limit": "5"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.page=1",
+            "body.has_next=true"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "last-page",
+          "name": "Última página",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/paginate",
+            "headers": {},
+            "params": {
+              "page": "10",
+              "limit": "5"
+            }
+          },
+          "expect": [
+            "status=200",
+            "body.has_next=false"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "filter-active",
+          "name": "Filtrar usuarios activos",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/users",
+            "headers": {},
+            "params": {
+              "active": "true"
+            }
+          },
+          "expect": [
+            "status=200"
+          ],
+          "save": {},
+          "asAuth": false
+        },
+        {
+          "id": "filter-published",
+          "name": "Filtrar posts publicados",
+          "dependsOn": [],
+          "parallel": false,
+          "always": false,
+          "retry": 0,
+          "request": {
+            "method": "GET",
+            "path": "/posts",
+            "headers": {},
+            "params": {
+              "published": "true"
+            }
+          },
+          "expect": [
+            "status=200"
+          ],
+          "save": {},
+          "asAuth": false
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "id": "6565c30e",
+      "collection": "smoke",
+      "env": "local",
+      "startedAt": "2026-05-20T05:52:27.603632",
+      "duration": 295,
+      "steps": [
+        {
+          "id": "health",
+          "name": "Health check (sin auth)",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/health",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 168,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:27 GMT",
+              "server": "uvicorn",
+              "content-length": "96",
+              "content-type": "application/json",
+              "x-request-id": "31287af0",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "status": "ok",
+              "timestamp": "2026-05-20T05:52:27.483687+00:00",
+              "version": "1.0.0",
+              "uptime_ms": 972
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.status=ok",
+              "passed": true,
+              "actual": "ok"
+            },
+            {
+              "expr": "ms<=2000",
+              "passed": true,
+              "actual": 168
+            }
+          ],
+          "saved": {},
+          "duration_ms": 168
+        },
+        {
+          "id": "echo-get",
+          "name": "Echo GET — refleja headers",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/echo?q=hello",
+            "headers": {
+              "host": "localhost:8000",
+              "x-test-header": "xaip-smoke",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:27 GMT",
+              "server": "uvicorn",
+              "content-length": "223",
+              "content-type": "application/json",
+              "x-request-id": "8a948864",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "method": "GET",
+              "headers": {
+                "host": "localhost:8000",
+                "x-test-header": "xaip-smoke",
+                "authorization": "Bearer test-token-static-12345"
+              },
+              "query_params": {
+                "q": "hello"
+              },
+              "url": "http://localhost:8000/echo?q=hello",
+              "client": "127.0.0.1"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.method=GET",
+              "passed": true,
+              "actual": "GET"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "echo-post",
+          "name": "Echo POST — refleja body",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/echo",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "39",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "message": "hello xaip",
+              "number": 42
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:27 GMT",
+              "server": "uvicorn",
+              "content-length": "220",
+              "content-type": "application/json",
+              "x-request-id": "3cde751e",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "method": "POST",
+              "headers": {
+                "host": "localhost:8000",
+                "content-type": "application/json",
+                "content-length": "39",
+                "authorization": "Bearer test-token-static-12345"
+              },
+              "body": {
+                "message": "hello xaip",
+                "number": 42
+              },
+              "query_params": {}
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.body.message=hello xaip",
+              "passed": true,
+              "actual": "hello xaip"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 3
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "a3cf06c8",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:52:41.229864",
+      "duration": 303,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 138,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:40 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "5613f0cc",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "access_token": "tok-1339996a72e3b9dfd7903c8045c5e79b",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-1339996a72e3b9dfd7903c8045c5e79b"
+            }
+          ],
+          "saved": {
+            "token": "tok-1339996a72e3b9dfd7903c8045c5e79b"
+          },
+          "duration_ms": 138
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-1339996a72e3b9dfd7903c8045c5e79b"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:40 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "d3c73442",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-1339996a72e3b9dfd7903c8045c5e79b"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:52:40 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Basic",
+              "content-length": "33",
+              "content-type": "application/json",
+              "x-request-id": "98f74485",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "detail": "Basic Auth requerido"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 401,
+              "message": "esperado = 200, obtenido 401"
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": false,
+              "message": "esperado = True, obtenido None"
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": false,
+              "message": "esperado = basic, obtenido None"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "invalid-token",
+          "status": "skipped",
+          "assertions": [],
+          "saved": {},
+          "duration_ms": 0
+        },
+        {
+          "id": "use-token",
+          "status": "skipped",
+          "assertions": [],
+          "saved": {},
+          "duration_ms": 0
+        }
+      ],
+      "summary": {
+        "passed": 2,
+        "failed": 1,
+        "skipped": 2,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "25108563",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:55:03.979103",
+      "duration": 441,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 169,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:02 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "5fd8c070",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "access_token": "tok-7e9618615e2b26f0d627ffdb85a8a6c8",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+            }
+          ],
+          "saved": {
+            "token": "tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+          },
+          "duration_ms": 169
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 33,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:02 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "c3827a9a",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 33
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:02 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Basic",
+              "content-length": "33",
+              "content-type": "application/json",
+              "x-request-id": "e705233a",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Basic Auth requerido"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 401,
+              "message": "esperado = 200, obtenido 401"
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": false,
+              "message": "esperado = True, obtenido None"
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": false,
+              "message": "esperado = basic, obtenido None"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:02 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "896e2c88",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-7e961861..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": false,
+              "actual": 200,
+              "message": "esperado = 401, obtenido 200"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-7e9618615e2b26f0d627ffdb85a8a6c8"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 31,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:03 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "6faf5eb1",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-7e961861..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=bearer",
+              "passed": true,
+              "actual": "bearer"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 31
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 2,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "35361f73",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:55:27.893682",
+      "duration": 437,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 164,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:27 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "dfc33a45",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "access_token": "tok-27fe37bb2d8a8bea2b13acc7bf7813a6",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+            }
+          ],
+          "saved": {
+            "token": "tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+          },
+          "duration_ms": 164
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 31,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:27 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "a89b0806",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 31
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:27 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Basic",
+              "content-length": "33",
+              "content-type": "application/json",
+              "x-request-id": "f7771391",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Basic Auth requerido"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 401,
+              "message": "esperado = 200, obtenido 401"
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": false,
+              "message": "esperado = True, obtenido None"
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": false,
+              "message": "esperado = basic, obtenido None"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:27 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "35cb3a82",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-27fe37bb..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": false,
+              "actual": 200,
+              "message": "esperado = 401, obtenido 200"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-27fe37bb2d8a8bea2b13acc7bf7813a6"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 41,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:27 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "0cedd488",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-27fe37bb..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=bearer",
+              "passed": true,
+              "actual": "bearer"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 41
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 2,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "01e04c3e",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:55:58.032851",
+      "duration": 396,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 138,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:57 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "dc849583",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "access_token": "tok-ca7ad2887fe86f90990b2a60626247d0",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-ca7ad2887fe86f90990b2a60626247d0"
+            }
+          ],
+          "saved": {
+            "token": "tok-ca7ad2887fe86f90990b2a60626247d0"
+          },
+          "duration_ms": 138
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-ca7ad2887fe86f90990b2a60626247d0"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:57 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "fcd14731",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-ca7ad2887fe86f90990b2a60626247d0"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:57 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Basic",
+              "content-length": "33",
+              "content-type": "application/json",
+              "x-request-id": "06168452",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Basic Auth requerido"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 401,
+              "message": "esperado = 200, obtenido 401"
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": false,
+              "message": "esperado = True, obtenido None"
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": false,
+              "message": "esperado = basic, obtenido None"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-ca7ad2887fe86f90990b2a60626247d0"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 35,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:57 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "0eedc376",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-ca7ad288..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": false,
+              "actual": 200,
+              "message": "esperado = 401, obtenido 200"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 35
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-ca7ad2887fe86f90990b2a60626247d0"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 30,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:55:57 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "c291d26d",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-ca7ad288..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=bearer",
+              "passed": true,
+              "actual": "bearer"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 30
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 2,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "6466005e",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:57:40.167336",
+      "duration": 378,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 142,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:57:39 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "be9a251a",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "access_token": "tok-8ea092578a386b8e9ba8406f71b99ec9",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-8ea092578a386b8e9ba8406f71b99ec9"
+            }
+          ],
+          "saved": {
+            "token": "tok-8ea092578a386b8e9ba8406f71b99ec9"
+          },
+          "duration_ms": 142
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-8ea092578a386b8e9ba8406f71b99ec9"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:57:39 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "48dee1dc",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-8ea092578a386b8e9ba8406f71b99ec9"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:57:39 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Basic",
+              "content-length": "33",
+              "content-type": "application/json",
+              "x-request-id": "48d96403",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Basic Auth requerido"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 401,
+              "message": "esperado = 200, obtenido 401"
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": false,
+              "message": "esperado = True, obtenido None"
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": false,
+              "message": "esperado = basic, obtenido None"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-8ea092578a386b8e9ba8406f71b99ec9"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:57:39 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "91dfd94c",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-8ea09257..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": false,
+              "actual": 200,
+              "message": "esperado = 401, obtenido 200"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-8ea092578a386b8e9ba8406f71b99ec9"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:57:39 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "0c9cb67b",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-8ea09257..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=bearer",
+              "passed": true,
+              "actual": "bearer"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 2,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "484153e9",
+      "collection": "smoke",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:30.469357",
+      "duration": 273,
+      "steps": [
+        {
+          "id": "health",
+          "name": "Health check (sin auth)",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/health",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 155,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:30 GMT",
+              "server": "uvicorn",
+              "content-length": "97",
+              "content-type": "application/json",
+              "x-request-id": "415ea954",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "status": "ok",
+              "timestamp": "2026-05-20T05:59:30.356224+00:00",
+              "version": "1.0.0",
+              "uptime_ms": 1028
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.status=ok",
+              "passed": true,
+              "actual": "ok"
+            },
+            {
+              "expr": "ms<=2000",
+              "passed": true,
+              "actual": 155
+            }
+          ],
+          "saved": {},
+          "duration_ms": 155
+        },
+        {
+          "id": "echo-get",
+          "name": "Echo GET — refleja headers",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/echo?q=hello",
+            "headers": {
+              "host": "localhost:8000",
+              "x-test-header": "xaip-smoke",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:30 GMT",
+              "server": "uvicorn",
+              "content-length": "223",
+              "content-type": "application/json",
+              "x-request-id": "5e9f5961",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "method": "GET",
+              "headers": {
+                "host": "localhost:8000",
+                "x-test-header": "xaip-smoke",
+                "authorization": "Bearer test-token-static-12345"
+              },
+              "query_params": {
+                "q": "hello"
+              },
+              "url": "http://localhost:8000/echo?q=hello",
+              "client": "127.0.0.1"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.method=GET",
+              "passed": true,
+              "actual": "GET"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "echo-post",
+          "name": "Echo POST — refleja body",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/echo",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "39",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "message": "hello xaip",
+              "number": 42
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:30 GMT",
+              "server": "uvicorn",
+              "content-length": "220",
+              "content-type": "application/json",
+              "x-request-id": "75db5297",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "method": "POST",
+              "headers": {
+                "host": "localhost:8000",
+                "content-type": "application/json",
+                "content-length": "39",
+                "authorization": "Bearer test-token-static-12345"
+              },
+              "body": {
+                "message": "hello xaip",
+                "number": 42
+              },
+              "query_params": {}
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.body.message=hello xaip",
+              "passed": true,
+              "actual": "hello xaip"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 3
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "67ff1359",
+      "collection": "auth-flow",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:31.635858",
+      "duration": 395,
+      "steps": [
+        {
+          "id": "get-token",
+          "name": "POST /auth/token — obtener token",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/auth/token",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "69",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "username": "admin",
+              "password": "secret",
+              "grant_type": "password"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 146,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:31 GMT",
+              "server": "uvicorn",
+              "content-length": "95",
+              "content-type": "application/json",
+              "x-request-id": "8c095e85",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "access_token": "tok-989d2d2cfddf19acf60825fec39ddb3b",
+              "token_type": "bearer",
+              "expires_in": 3600
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.token_type=bearer",
+              "passed": true,
+              "actual": "bearer"
+            },
+            {
+              "expr": "body.access_token exists",
+              "passed": true,
+              "actual": "tok-989d2d2cfddf19acf60825fec39ddb3b"
+            }
+          ],
+          "saved": {
+            "token": "tok-989d2d2cfddf19acf60825fec39ddb3b"
+          },
+          "duration_ms": 146
+        },
+        {
+          "id": "test-apikey",
+          "name": "GET /protected/apikey — API Key en header",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/apikey",
+            "headers": {
+              "host": "localhost:8000",
+              "x-api-key": "testkey-12345",
+              "authorization": "Bearer tok-989d2d2cfddf19acf60825fec39ddb3b"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 29,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:31 GMT",
+              "server": "uvicorn",
+              "content-length": "40",
+              "content-type": "application/json",
+              "x-request-id": "eb364818",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "apikey"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 29
+        },
+        {
+          "id": "test-basic",
+          "name": "GET /protected/basic — Basic Auth",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/basic",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Basic YWRtaW46c2VjcmV0"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:31 GMT",
+              "server": "uvicorn",
+              "content-length": "54",
+              "content-type": "application/json",
+              "x-request-id": "a5ccb2d6",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "authenticated": true,
+              "user": "admin",
+              "method": "basic"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=basic",
+              "passed": true,
+              "actual": "basic"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 28
+        },
+        {
+          "id": "invalid-token",
+          "name": "GET /protected/bearer — token inválido (espera 401)",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer bad-token"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 30,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:31 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Bearer",
+              "content-length": "39",
+              "content-type": "application/json",
+              "x-request-id": "61e8cb59",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "detail": "Token inválido o expirado"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": true,
+              "actual": 401
+            }
+          ],
+          "saved": {},
+          "duration_ms": 30
+        },
+        {
+          "id": "use-token",
+          "name": "GET /protected/bearer — usar token obtenido",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/protected/bearer",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer tok-989d2d2cfddf19acf60825fec39ddb3b"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 32,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:31 GMT",
+              "server": "uvicorn",
+              "content-length": "73",
+              "content-type": "application/json",
+              "x-request-id": "1fa29ab6",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "authenticated": true,
+              "method": "bearer",
+              "token_prefix": "tok-989d2d2c..."
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.authenticated=true",
+              "passed": true,
+              "actual": true
+            },
+            {
+              "expr": "body.method=bearer",
+              "passed": true,
+              "actual": "bearer"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 32
+        }
+      ],
+      "summary": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "0661214e",
+      "collection": "crud-users",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:33.032550",
+      "duration": 550,
+      "steps": [
+        {
+          "id": "list-users",
+          "name": "GET /users — listar usuarios",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users?page=1&limit=10",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 160,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "295",
+              "content-type": "application/json",
+              "x-request-id": "14b11eae",
+              "x-response-time-ms": "2"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 3,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.total>=3",
+              "passed": true,
+              "actual": 3
+            },
+            {
+              "expr": "body.data exists",
+              "passed": true,
+              "actual": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ]
+            }
+          ],
+          "saved": {},
+          "duration_ms": 160
+        },
+        {
+          "id": "create-user",
+          "name": "POST /users — crear usuario nuevo",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/users",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "70",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user"
+            }
+          },
+          "response": {
+            "status": 201,
+            "ms": 35,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "134",
+              "content-type": "application/json",
+              "x-request-id": "451f4a9e",
+              "x-response-time-ms": "2"
+            },
+            "body": {
+              "id": 4,
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T05:59:32.725329+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=201",
+              "passed": true,
+              "actual": 201
+            },
+            {
+              "expr": "body.id exists",
+              "passed": true,
+              "actual": 4
+            },
+            {
+              "expr": "body.name=Test User",
+              "passed": true,
+              "actual": "Test User"
+            }
+          ],
+          "saved": {
+            "new_user_id": 4,
+            "new_user_email": "testuser@example.com"
+          },
+          "duration_ms": 35
+        },
+        {
+          "id": "get-created-user",
+          "name": "GET /users/{id} — leer usuario creado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/4",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 32,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "134",
+              "content-type": "application/json",
+              "x-request-id": "019822e0",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "id": 4,
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T05:59:32.725329+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.email=testuser@example.com",
+              "passed": true,
+              "actual": "testuser@example.com"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 32
+        },
+        {
+          "id": "patch-user",
+          "name": "PATCH /users/{id} — actualizar parcialmente",
+          "status": "passed",
+          "request": {
+            "method": "PATCH",
+            "url": "http://localhost:8000/users/4",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "29",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "name": "Test User Updated"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 38,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "190",
+              "content-type": "application/json",
+              "x-request-id": "13dd8b9b",
+              "x-response-time-ms": "2"
+            },
+            "body": {
+              "id": 4,
+              "name": "Test User Updated",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T05:59:32.725329+00:00",
+              "updated_at": "2026-05-20T05:59:32.866134+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.name=Test User Updated",
+              "passed": true,
+              "actual": "Test User Updated"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 38
+        },
+        {
+          "id": "create-post",
+          "name": "POST /users/{id}/posts — crear post",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/users/4/posts",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "76",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "title": "Post de prueba",
+              "body": "Contenido del post",
+              "published": true
+            }
+          },
+          "response": {
+            "status": 201,
+            "ms": 32,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "138",
+              "content-type": "application/json",
+              "x-request-id": "036b5f05",
+              "x-response-time-ms": "2"
+            },
+            "body": {
+              "id": 4,
+              "user_id": 4,
+              "title": "Post de prueba",
+              "body": "Contenido del post",
+              "published": true,
+              "created_at": "2026-05-20T05:59:32.919038+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=201",
+              "passed": true,
+              "actual": 201
+            },
+            {
+              "expr": "body.id exists",
+              "passed": true,
+              "actual": 4
+            }
+          ],
+          "saved": {
+            "new_post_id": 4
+          },
+          "duration_ms": 32
+        },
+        {
+          "id": "delete-user",
+          "name": "DELETE /users/{id} — teardown: borrar usuario",
+          "status": "passed",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:8000/users/4",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 204,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-type": "application/json",
+              "x-request-id": "73662665",
+              "x-response-time-ms": "1"
+            },
+            "body": ""
+          },
+          "assertions": [
+            {
+              "expr": "status=204",
+              "passed": true,
+              "actual": 204
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        },
+        {
+          "id": "get-user-posts",
+          "name": "GET /users/{id}/posts — posts del usuario",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/4/posts",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 404,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-length": "36",
+              "content-type": "application/json",
+              "x-request-id": "6a2c3be5",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "detail": "Usuario 4 no encontrado"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": false,
+              "actual": 404,
+              "message": "esperado = 200, obtenido 404"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "delete-post",
+          "name": "DELETE /posts/{id} — teardown: borrar post",
+          "status": "passed",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:8000/posts/4",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 204,
+            "ms": 29,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:32 GMT",
+              "server": "uvicorn",
+              "content-type": "application/json",
+              "x-request-id": "61db957f",
+              "x-response-time-ms": "1"
+            },
+            "body": ""
+          },
+          "assertions": [
+            {
+              "expr": "status=204",
+              "passed": true,
+              "actual": 204
+            }
+          ],
+          "saved": {},
+          "duration_ms": 29
+        }
+      ],
+      "summary": {
+        "passed": 7,
+        "failed": 1,
+        "skipped": 0,
+        "error": 0,
+        "total": 8
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "a8b489e2",
+      "collection": "assertions-demo",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:34.320887",
+      "duration": 501,
+      "steps": [
+        {
+          "id": "assert-status-range",
+          "name": "Status en rango 2xx",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/health",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 129,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:33 GMT",
+              "server": "uvicorn",
+              "content-length": "97",
+              "content-type": "application/json",
+              "x-request-id": "b08ee73e",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "status": "ok",
+              "timestamp": "2026-05-20T05:59:33.955012+00:00",
+              "version": "1.0.0",
+              "uptime_ms": 1082
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status>=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "status<300",
+              "passed": true,
+              "actual": 200
+            }
+          ],
+          "saved": {},
+          "duration_ms": 129
+        },
+        {
+          "id": "assert-headers",
+          "name": "Headers de respuesta presentes",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/health",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 25,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:33 GMT",
+              "server": "uvicorn",
+              "content-length": "97",
+              "content-type": "application/json",
+              "x-request-id": "5b252997",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "status": "ok",
+              "timestamp": "2026-05-20T05:59:33.983763+00:00",
+              "version": "1.0.0",
+              "uptime_ms": 1084
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "headers.x-request-id exists",
+              "passed": true,
+              "actual": "5b252997"
+            },
+            {
+              "expr": "headers.x-response-time-ms exists",
+              "passed": true,
+              "actual": "0"
+            }
+          ],
+          "saved": {
+            "request_id": "5b252997"
+          },
+          "duration_ms": 25
+        },
+        {
+          "id": "assert-body-deep",
+          "name": "Campos del body con operadores",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:33 GMT",
+              "server": "uvicorn",
+              "content-length": "295",
+              "content-type": "application/json",
+              "x-request-id": "df8f2b72",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 3,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.total>=1",
+              "passed": true,
+              "actual": 3
+            },
+            {
+              "expr": "body.page=1",
+              "passed": true,
+              "actual": 1
+            },
+            {
+              "expr": "body.data exists",
+              "passed": true,
+              "actual": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ]
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        },
+        {
+          "id": "assert-ms",
+          "name": "Tiempo de respuesta < 1000ms",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/health",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 23,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:33 GMT",
+              "server": "uvicorn",
+              "content-length": "97",
+              "content-type": "application/json",
+              "x-request-id": "d0d54d2f",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "status": "ok",
+              "timestamp": "2026-05-20T05:59:34.082681+00:00",
+              "version": "1.0.0",
+              "uptime_ms": 1088
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "ms<=1000",
+              "passed": true,
+              "actual": 23
+            }
+          ],
+          "saved": {},
+          "duration_ms": 23
+        },
+        {
+          "id": "assert-slow",
+          "name": "Endpoint lento — verifica tiempo",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/slow?ms=200",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 226,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:33 GMT",
+              "server": "uvicorn",
+              "content-length": "47",
+              "content-type": "application/json",
+              "x-request-id": "a9abbaea",
+              "x-response-time-ms": "201"
+            },
+            "body": {
+              "slept_ms": 200,
+              "message": "respuesta lenta OK"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.slept_ms=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "ms>=200",
+              "passed": true,
+              "actual": 226
+            }
+          ],
+          "saved": {},
+          "duration_ms": 226
+        }
+      ],
+      "summary": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 5
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "e7de0431",
+      "collection": "error-scenarios",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:35.265852",
+      "duration": 254,
+      "steps": [
+        {
+          "id": "not-found",
+          "name": "GET /users/9999 — 404 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/9999",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 404,
+            "ms": 134,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:34 GMT",
+              "server": "uvicorn",
+              "content-length": "39",
+              "content-type": "application/json",
+              "x-request-id": "f981fc67",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "detail": "Usuario 9999 no encontrado"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=404",
+              "passed": true,
+              "actual": 404
+            }
+          ],
+          "saved": {},
+          "duration_ms": 134
+        },
+        {
+          "id": "force-500",
+          "name": "GET /error/500 — 500 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/error/500",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 500,
+            "ms": 27,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:34 GMT",
+              "server": "uvicorn",
+              "content-length": "67",
+              "content-type": "application/json",
+              "x-request-id": "29bcb499",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "error": "Internal Server Error — error del servidor",
+              "code": 500
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=500",
+              "passed": true,
+              "actual": 500
+            },
+            {
+              "expr": "body.code=500",
+              "passed": true,
+              "actual": 500
+            }
+          ],
+          "saved": {},
+          "duration_ms": 27
+        },
+        {
+          "id": "force-422",
+          "name": "GET /error/422 — 422 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/error/422",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 422,
+            "ms": 25,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:34 GMT",
+              "server": "uvicorn",
+              "content-length": "68",
+              "content-type": "application/json",
+              "x-request-id": "f882d5d5",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "error": "Unprocessable Entity — error de validación",
+              "code": 422
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=422",
+              "passed": true,
+              "actual": 422
+            }
+          ],
+          "saved": {},
+          "duration_ms": 25
+        },
+        {
+          "id": "unauth-access",
+          "name": "Sin auth — 401 esperado",
+          "status": "failed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:34 GMT",
+              "server": "uvicorn",
+              "content-length": "295",
+              "content-type": "application/json",
+              "x-request-id": "6b2dffe6",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 3,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": false,
+              "actual": 200,
+              "message": "esperado = 401, obtenido 200"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        }
+      ],
+      "summary": {
+        "passed": 3,
+        "failed": 1,
+        "skipped": 0,
+        "error": 0,
+        "total": 4
+      },
+      "exitCode": 1
+    },
+    {
+      "id": "620a65c4",
+      "collection": "pagination-demo",
+      "env": "local",
+      "startedAt": "2026-05-20T05:59:36.157748",
+      "duration": 239,
+      "steps": [
+        {
+          "id": "page-1",
+          "name": "Primera página",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/paginate?page=1&limit=5",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 118,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:35 GMT",
+              "server": "uvicorn",
+              "content-length": "201",
+              "content-type": "application/json",
+              "x-request-id": "9e2f921b",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "index": 1,
+                  "value": "item-1"
+                },
+                {
+                  "index": 2,
+                  "value": "item-2"
+                },
+                {
+                  "index": 3,
+                  "value": "item-3"
+                },
+                {
+                  "index": 4,
+                  "value": "item-4"
+                },
+                {
+                  "index": 5,
+                  "value": "item-5"
+                }
+              ],
+              "page": 1,
+              "limit": 5,
+              "total": 50,
+              "has_next": true
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.page=1",
+              "passed": true,
+              "actual": 1
+            },
+            {
+              "expr": "body.has_next=true",
+              "passed": true,
+              "actual": true
+            }
+          ],
+          "saved": {},
+          "duration_ms": 118
+        },
+        {
+          "id": "last-page",
+          "name": "Última página",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/paginate?page=10&limit=5",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 22,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:35 GMT",
+              "server": "uvicorn",
+              "content-length": "213",
+              "content-type": "application/json",
+              "x-request-id": "e7ebe101",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "index": 46,
+                  "value": "item-46"
+                },
+                {
+                  "index": 47,
+                  "value": "item-47"
+                },
+                {
+                  "index": 48,
+                  "value": "item-48"
+                },
+                {
+                  "index": 49,
+                  "value": "item-49"
+                },
+                {
+                  "index": 50,
+                  "value": "item-50"
+                }
+              ],
+              "page": 10,
+              "limit": 5,
+              "total": 50,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.has_next=false",
+              "passed": true,
+              "actual": false
+            }
+          ],
+          "saved": {},
+          "duration_ms": 22
+        },
+        {
+          "id": "filter-active",
+          "name": "Filtrar usuarios activos",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users?active=true",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 24,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:35 GMT",
+              "server": "uvicorn",
+              "content-length": "214",
+              "content-type": "application/json",
+              "x-request-id": "5da0a129",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 2,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            }
+          ],
+          "saved": {},
+          "duration_ms": 24
+        },
+        {
+          "id": "filter-published",
+          "name": "Filtrar posts publicados",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/posts?published=true",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 23,
+            "headers": {
+              "date": "Wed, 20 May 2026 05:59:35 GMT",
+              "server": "uvicorn",
+              "content-length": "228",
+              "content-type": "application/json",
+              "x-request-id": "35a23313",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "user_id": 1,
+                  "title": "Hola XAIP",
+                  "body": "Mi primer post",
+                  "published": true
+                },
+                {
+                  "id": 2,
+                  "user_id": 1,
+                  "title": "Testing APIs",
+                  "body": "Cómo testear APIs",
+                  "published": true
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 2,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            }
+          ],
+          "saved": {},
+          "duration_ms": 23
+        }
+      ],
+      "summary": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 4
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "9698d07f",
+      "collection": "crud-users",
+      "env": "local",
+      "startedAt": "2026-05-20T06:00:32.964294",
+      "duration": 426,
+      "steps": [
+        {
+          "id": "list-users",
+          "name": "GET /users — listar usuarios",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users?page=1&limit=10",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 122,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "295",
+              "content-type": "application/json",
+              "x-request-id": "640467c2",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "data": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ],
+              "page": 1,
+              "limit": 10,
+              "total": 3,
+              "has_next": false
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.total>=3",
+              "passed": true,
+              "actual": 3
+            },
+            {
+              "expr": "body.data exists",
+              "passed": true,
+              "actual": [
+                {
+                  "id": 1,
+                  "name": "Alice",
+                  "email": "alice@example.com",
+                  "role": "admin",
+                  "active": true
+                },
+                {
+                  "id": 2,
+                  "name": "Bob",
+                  "email": "bob@example.com",
+                  "role": "user",
+                  "active": true
+                },
+                {
+                  "id": 3,
+                  "name": "Carol",
+                  "email": "carol@example.com",
+                  "role": "user",
+                  "active": false
+                }
+              ]
+            }
+          ],
+          "saved": {},
+          "duration_ms": 122
+        },
+        {
+          "id": "create-user",
+          "name": "POST /users — crear usuario nuevo",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/users",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "70",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user"
+            }
+          },
+          "response": {
+            "status": 201,
+            "ms": 28,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "134",
+              "content-type": "application/json",
+              "x-request-id": "2d107a8a",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "id": 5,
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T06:00:32.725363+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=201",
+              "passed": true,
+              "actual": 201
+            },
+            {
+              "expr": "body.id exists",
+              "passed": true,
+              "actual": 5
+            },
+            {
+              "expr": "body.name=Test User",
+              "passed": true,
+              "actual": "Test User"
+            }
+          ],
+          "saved": {
+            "new_user_id": 5,
+            "new_user_email": "testuser@example.com"
+          },
+          "duration_ms": 28
+        },
+        {
+          "id": "get-created-user",
+          "name": "GET /users/{id} — leer usuario creado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/5",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 25,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "134",
+              "content-type": "application/json",
+              "x-request-id": "c9120c97",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "id": 5,
+              "name": "Test User",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T06:00:32.725363+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.email=testuser@example.com",
+              "passed": true,
+              "actual": "testuser@example.com"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 25
+        },
+        {
+          "id": "patch-user",
+          "name": "PATCH /users/{id} — actualizar parcialmente",
+          "status": "passed",
+          "request": {
+            "method": "PATCH",
+            "url": "http://localhost:8000/users/5",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "29",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "name": "Test User Updated"
+            }
+          },
+          "response": {
+            "status": 200,
+            "ms": 26,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "190",
+              "content-type": "application/json",
+              "x-request-id": "530104b5",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "id": 5,
+              "name": "Test User Updated",
+              "email": "testuser@example.com",
+              "role": "user",
+              "active": true,
+              "created_at": "2026-05-20T06:00:32.725363+00:00",
+              "updated_at": "2026-05-20T06:00:32.832272+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            },
+            {
+              "expr": "body.name=Test User Updated",
+              "passed": true,
+              "actual": "Test User Updated"
+            }
+          ],
+          "saved": {},
+          "duration_ms": 26
+        },
+        {
+          "id": "create-post",
+          "name": "POST /users/{id}/posts — crear post",
+          "status": "passed",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:8000/users/5/posts",
+            "headers": {
+              "host": "localhost:8000",
+              "content-type": "application/json",
+              "content-length": "76",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": {
+              "title": "Post de prueba",
+              "body": "Contenido del post",
+              "published": true
+            }
+          },
+          "response": {
+            "status": 201,
+            "ms": 23,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "138",
+              "content-type": "application/json",
+              "x-request-id": "2e047134",
+              "x-response-time-ms": "1"
+            },
+            "body": {
+              "id": 5,
+              "user_id": 5,
+              "title": "Post de prueba",
+              "body": "Contenido del post",
+              "published": true,
+              "created_at": "2026-05-20T06:00:32.871553+00:00"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=201",
+              "passed": true,
+              "actual": 201
+            },
+            {
+              "expr": "body.id exists",
+              "passed": true,
+              "actual": 5
+            }
+          ],
+          "saved": {
+            "new_post_id": 5
+          },
+          "duration_ms": 23
+        },
+        {
+          "id": "get-user-posts",
+          "name": "GET /users/{id}/posts — posts del usuario",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/5/posts",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 200,
+            "ms": 22,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-length": "140",
+              "content-type": "application/json",
+              "x-request-id": "ba3d0c2b",
+              "x-response-time-ms": "0"
+            },
+            "body": [
+              {
+                "id": 5,
+                "user_id": 5,
+                "title": "Post de prueba",
+                "body": "Contenido del post",
+                "published": true,
+                "created_at": "2026-05-20T06:00:32.871553+00:00"
+              }
+            ]
+          },
+          "assertions": [
+            {
+              "expr": "status=200",
+              "passed": true,
+              "actual": 200
+            }
+          ],
+          "saved": {},
+          "duration_ms": 22
+        },
+        {
+          "id": "delete-post",
+          "name": "DELETE /posts/{id} — teardown: borrar post",
+          "status": "passed",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:8000/posts/5",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 204,
+            "ms": 22,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-type": "application/json",
+              "x-request-id": "7ee2bec8",
+              "x-response-time-ms": "1"
+            },
+            "body": ""
+          },
+          "assertions": [
+            {
+              "expr": "status=204",
+              "passed": true,
+              "actual": 204
+            }
+          ],
+          "saved": {},
+          "duration_ms": 22
+        },
+        {
+          "id": "delete-user",
+          "name": "DELETE /users/{id} — teardown: borrar usuario",
+          "status": "passed",
+          "request": {
+            "method": "DELETE",
+            "url": "http://localhost:8000/users/5",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 204,
+            "ms": 23,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:32 GMT",
+              "server": "uvicorn",
+              "content-type": "application/json",
+              "x-request-id": "98acdb1b",
+              "x-response-time-ms": "0"
+            },
+            "body": ""
+          },
+          "assertions": [
+            {
+              "expr": "status=204",
+              "passed": true,
+              "actual": 204
+            }
+          ],
+          "saved": {},
+          "duration_ms": 23
+        }
+      ],
+      "summary": {
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 8
+      },
+      "exitCode": 0
+    },
+    {
+      "id": "a0816e0f",
+      "collection": "error-scenarios",
+      "env": "local",
+      "startedAt": "2026-05-20T06:00:33.830669",
+      "duration": 224,
+      "steps": [
+        {
+          "id": "not-found",
+          "name": "GET /users/9999 — 404 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users/9999",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 404,
+            "ms": 124,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:33 GMT",
+              "server": "uvicorn",
+              "content-length": "39",
+              "content-type": "application/json",
+              "x-request-id": "8cbe7bb5",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Usuario 9999 no encontrado"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=404",
+              "passed": true,
+              "actual": 404
+            }
+          ],
+          "saved": {},
+          "duration_ms": 124
+        },
+        {
+          "id": "force-500",
+          "name": "GET /error/500 — 500 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/error/500",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 500,
+            "ms": 23,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:33 GMT",
+              "server": "uvicorn",
+              "content-length": "67",
+              "content-type": "application/json",
+              "x-request-id": "79c235d5",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "error": "Internal Server Error — error del servidor",
+              "code": 500
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=500",
+              "passed": true,
+              "actual": 500
+            },
+            {
+              "expr": "body.code=500",
+              "passed": true,
+              "actual": 500
+            }
+          ],
+          "saved": {},
+          "duration_ms": 23
+        },
+        {
+          "id": "force-422",
+          "name": "GET /error/422 — 422 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/error/422",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer test-token-static-12345"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 422,
+            "ms": 20,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:33 GMT",
+              "server": "uvicorn",
+              "content-length": "68",
+              "content-type": "application/json",
+              "x-request-id": "582cc614",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "error": "Unprocessable Entity — error de validación",
+              "code": 422
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=422",
+              "passed": true,
+              "actual": 422
+            }
+          ],
+          "saved": {},
+          "duration_ms": 20
+        },
+        {
+          "id": "unauth-access",
+          "name": "Sin auth — 401 esperado",
+          "status": "passed",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:8000/users",
+            "headers": {
+              "host": "localhost:8000",
+              "authorization": "Bearer invalid-token-xyz"
+            },
+            "body": null
+          },
+          "response": {
+            "status": 401,
+            "ms": 22,
+            "headers": {
+              "date": "Wed, 20 May 2026 06:00:33 GMT",
+              "server": "uvicorn",
+              "www-authenticate": "Bearer",
+              "content-length": "58",
+              "content-type": "application/json",
+              "x-request-id": "2c7385c6",
+              "x-response-time-ms": "0"
+            },
+            "body": {
+              "detail": "Se requiere Bearer token o X-Api-Key válidos"
+            }
+          },
+          "assertions": [
+            {
+              "expr": "status=401",
+              "passed": true,
+              "actual": 401
+            }
+          ],
+          "saved": {},
+          "duration_ms": 22
+        }
+      ],
+      "summary": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "error": 0,
+        "total": 4
+      },
+      "exitCode": 0
+    }
+  ]
+}
