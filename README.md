@@ -248,6 +248,18 @@ xaip run PUT /users/42 \
 
 xaip run GET /report --dry-run      # muestra request sin enviar
 xaip run GET /slow --timeout 5s
+
+# Omitir auth config del entorno (útil para endpoints públicos)
+xaip run GET /health --no-auth
+
+# Auth explícita sin entorno (--no-auth evita que el provider
+# del entorno interfiera con el header manual)
+xaip run GET /api/users --no-auth -H "Authorization: Bearer $TOKEN"
+
+# Output modes
+xaip run GET /users --output table       # status + aserciones
+xaip run GET /users --output body-only   # solo el body de la respuesta
+xaip run GET /users --output json        # completo (default)
 ```
 
 ### `xaip endpoints`

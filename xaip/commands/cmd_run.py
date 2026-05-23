@@ -10,8 +10,9 @@ from typing import Any, Optional
 import typer
 from rich.console import Console
 
-from xaip.auth.providers import build_provider
+from xaip.auth.providers import NoAuthProvider, build_provider
 from xaip.commands.utils import load_config, output_json, resolve_env
+
 from xaip.core.assertions import AssertionEngine
 from xaip.core.extractor import ValueExtractor
 from xaip.core.models import HttpMethod, StepResult, StepStatus, RunResult
@@ -35,11 +36,12 @@ def run(
     save: Optional[list[str]] = typer.Option(None, "--save", help="var=jsonpath"),
     expect: Optional[list[str]] = typer.Option(None, "--expect", help="Aserción ej: status=200"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Mostrar request sin ejecutar"),
+    no_auth: bool = typer.Option(False, "--no-auth", "-N", help="Ignora la auth config del entorno"),
     follow_redirects: bool = typer.Option(False, "--follow-redirects"),
     timeout_str: Optional[str] = typer.Option(None, "--timeout", help="ej: 30s, 500ms"),
     config: Optional[str] = typer.Option(None, "--config"),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
-    output_fmt: str = typer.Option("json", "--output", "-o"),
+    output_fmt: str = typer.Option("json", "--output", "-o", help="json, body-only o table"),
 ) -> None:
     cfg, repo = load_config(config)
     active_env = resolve_env(cfg, env)
@@ -79,7 +81,7 @@ def run(
         return
 
     timeout = _parse_duration(timeout_str) if timeout_str else 30.0
-    auth = build_provider(active_env.auth)
+    auth = NoAuthProvider() if no_auth else build_provider(active_env.auth)
 
     async def _run() -> dict:
         client = HttpClient(
@@ -127,6 +129,9 @@ def run(
 
     if output_fmt == "table":
         _print_table(result)
+    elif output_fmt == "body-only":
+        body = result.get("response", {}).get("body", "")
+        _output_body_only(body, quiet)
     else:
         output_json(result, quiet)
 
@@ -174,6 +179,18 @@ def _parse_duration(d: str) -> float:
     if d.endswith("s"):
         return float(d[:-1])
     return float(d)
+
+
+def _output_body_only(body: object, quiet: bool) -> None:
+    import json
+    if quiet:
+        return
+    if isinstance(body, dict | list):
+        print(json.dumps(body, indent=2, ensure_ascii=False))
+    elif body is not None:
+        print(str(body))
+    else:
+        print("")
 
 
 def _print_table(result: dict) -> None:

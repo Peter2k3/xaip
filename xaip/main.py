@@ -47,16 +47,17 @@ def run_cmd(
     save: Optional[list[str]] = typer.Option(None, "--save", help="var=body.field"),
     expect: Optional[list[str]] = typer.Option(None, "--expect", help="status=200"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    no_auth: bool = typer.Option(False, "--no-auth", "-N", help="Ignora la auth config del entorno"),
     follow_redirects: bool = typer.Option(False, "--follow-redirects"),
     timeout: Optional[str] = typer.Option(None, "--timeout"),
-    output_fmt: str = typer.Option("json", "--output", "-o"),
+    output_fmt: str = typer.Option("json", "--output", "-o", help="json, body-only o table"),
     config: Optional[str] = typer.Option(None, "--config"),
     quiet: bool = typer.Option(False, "--quiet"),
 ) -> None:
     """Ejecuta una petición HTTP ad-hoc."""
     import asyncio
     import json as _json
-    from xaip.auth.providers import build_provider
+    from xaip.auth.providers import NoAuthProvider, build_provider
     from xaip.commands.utils import load_config, output_json, resolve_env
     from xaip.core.assertions import AssertionEngine
     from xaip.core.extractor import ValueExtractor
@@ -106,7 +107,7 @@ def run_cmd(
         from xaip.commands.cmd_run import _parse_duration
         timeout_secs = _parse_duration(timeout)
 
-    auth = build_provider(active_env.auth)
+    auth = NoAuthProvider() if no_auth else build_provider(active_env.auth)
 
     async def _run() -> dict:
         client = HttpClient(base_url=active_env.base_url, auth_provider=auth,
@@ -132,7 +133,16 @@ def run_cmd(
         }
 
     result = asyncio.run(_run())
-    output_json(result, quiet)
+
+    if output_fmt == "table":
+        from xaip.commands.cmd_run import _print_table
+        _print_table(result)
+    elif output_fmt == "body-only":
+        body = result.get("response", {}).get("body", "")
+        _output_body_only(body, quiet)
+    else:
+        output_json(result, quiet)
+
     if result.get("exitCode", 0) != 0:
         raise typer.Exit(1)
 
@@ -193,6 +203,18 @@ def tui_cmd(
     from xaip.tui.app import XaipTUI
     tui = XaipTUI(config_path=config, env=env, collection=collection)
     tui.run()
+
+
+def _output_body_only(body: object, quiet: bool) -> None:
+    import json as _json
+    if quiet:
+        return
+    if isinstance(body, dict | list):
+        print(_json.dumps(body, indent=2, ensure_ascii=False))
+    elif body is not None:
+        print(str(body))
+    else:
+        print("")
 
 
 if __name__ == "__main__":
